@@ -1,4 +1,49 @@
 
+0.12.1 / 2013-01-10 
+==================
+
+  * add x-domain error handling
+
+0.12.0 / 2013-01-04 
+==================
+
+  * add header persistence on redirects
+
+0.11.0 / 2013-01-02 
+==================
+
+  * add .error Error object. Closes #156
+  * add forcing of res.text removal for FF HEAD responses. Closes #162
+  * add reduce component usage. Closes #90
+  * move better-assert dep to development deps
+
+0.10.0 / 2012-11-14 
+==================
+
+  * add req.timeout(ms) support for the client
+
+0.9.10 / 2012-11-14 
+==================
+
+  * fix client-side .query(str) support
+
+0.9.9 / 2012-11-14 
+==================
+
+  * add .parse(fn) support
+  * fix socket hangup with dates in querystring. Closes #146
+  * fix socket hangup "error" event when a callback of arity 2 is provided
+
+0.9.8 / 2012-11-03 
+==================
+
+  * add emission of error from `Request#callback()`
+  * add a better fix for nodes weird socket hang up error
+  * add PUT/POST/PATCH data support to client short-hand functions
+  * add .license property to component.json
+  * change client portion to build using component(1)
+  * fix GET body support [guille]
+
 0.9.7 / 2012-10-19 
 ==================
 

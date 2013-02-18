@@ -260,7 +260,7 @@ test('POST json array', function(next){
   .post('/echo')
   .send([1,2,3])
   .end(function(res){
-    assert('application/json' == res.header['content-type']);
+    assert('application/json' == res.header['content-type'].split(';')[0]);
     assert('[1,2,3]' == res.text);
     next();
   });
@@ -293,7 +293,7 @@ test('POST multiple .send() strings', function(next){
   .send('user[name]=tj')
   .send('user[email]=tj@vision-media.ca')
   .end(function(res){
-    assert(res.header['content-type'] == 'application/x-www-form-urlencoded');
+    assert('application/x-www-form-urlencoded' == res.header['content-type'].split(';')[0]);
     assert(res.text == 'user[name]=tj&user[email]=tj@vision-media.ca')
     next();
   })
@@ -397,6 +397,29 @@ test('GET querystring multiple objects', function(next){
   });
 });
 
+test('GET querystring with strings', function(next){
+  request
+  .get('/querystring')
+  .query('search=Manny')
+  .query('range=1..5')
+  .query('order=desc')
+  .end(function(res){
+    assert.eql(res.body, { search: 'Manny', range: '1..5', order: 'desc' });
+    next();
+  });
+});
+
+test('GET querystring with strings and objects', function(next){
+  request
+  .get('/querystring')
+  .query('search=Manny')
+  .query({ order: 'desc', range: '1..5' })
+  .end(function(res){
+    assert.eql(res.body, { search: 'Manny', range: '1..5', order: 'desc' });
+    next();
+  });
+});
+
 test('GET querystring object .get(uri, obj)', function(next){
   request
   .get('/querystring', { search: 'Manny' })
@@ -431,6 +454,93 @@ test('request(url)', function(next){
 test('request(url, fn)', function(next){
   request('/foo', function(res){
     assert('bar' == res.body.foo);
+    next();
+  });
+});
+
+test('use(fn) - modify request', function(done) {
+  request
+    .post('/user/0/pet')
+    .use(function(req, next) {
+      req.send({pet: "loki"});
+      next();
+    })
+    .type('json')
+    .send({ pet: 'tobi' })
+    .end(function(err, res) {
+      if(err) return done(err);
+      assert('added pet "loki"' == res.text);
+      done();
+    });
+});
+
+test('use(fn) - modify response', function(done) {
+  request('/foo')
+    .use(function(req, next) {
+      next(null, function(res, prev) {
+        res.headers['content-type'] = 'application/json';
+        res.text = '{"baz":"bar"}';
+        prev();
+      });
+    })
+    .end(function(err, res) {
+      if(err) return done(err);
+      assert('bar' == res.body.baz);
+      done();
+    });
+});
+
+test('use(fn) - call res in reverse order', function(done) {
+  request('/foo')
+    .use(function(req, next) {
+      next(null, function(req, prev) {
+        req.test = 1;
+        prev();
+      });
+    })
+    .use(function(req, next) {
+      next(null, function(req, prev) {
+        req.test = 2;
+        prev();
+      });
+    })
+    .end(function(err, res) {
+      if(err) return done(err);
+      assert(1 == res.test);
+      done()
+    });
+});
+
+test('req.timeout(ms)', function(next){
+  request
+  .get('/delay/3000')
+  .timeout(1000)
+  .end(function(err, res){
+    assert(err, 'error missing');
+    assert(1000 == err.timeout, 'err.timeout missing');
+    assert('timeout of 1000ms exceeded' == err.message, 'err.message incorrect');
+    assert(null == res);
+    next();
+  })
+})
+
+test('req.withCredentials()', function(next){
+  request
+  .get('http://localhost:4001/')
+  .withCredentials()
+  .end(function(res){
+    assert(200 == res.status);
+    assert('tobi' == res.text);
+    next();
+  })
+})
+
+test('x-domain failure', function(next){
+  request
+  .get('http://google.com')
+  .end(function(err, res){
+    assert(err, 'error missing');
+    assert(err.crossDomain, 'not .crossDomain');
     next();
   });
 });

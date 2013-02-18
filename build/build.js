@@ -1,4 +1,12 @@
 ;(function(){
+
+
+/**
+ * hasOwnProperty.
+ */
+
+var has = Object.prototype.hasOwnProperty;
+
 /**
  * Require the given path.
  *
@@ -7,27 +15,32 @@
  * @api public
  */
 
-function require(p, parent, orig){
-  var path = require.resolve(p)
-    , mod = require.modules[path];
+function require(path, parent, orig) {
+  var resolved = require.resolve(path);
 
   // lookup failed
-  if (null == path) {
-    orig = orig || p;
+  if (null == resolved) {
+    orig = orig || path;
     parent = parent || 'root';
-    throw new Error('failed to require "' + orig + '" from "' + parent + '"');
+    var err = new Error('Failed to require "' + orig + '" from "' + parent + '"');
+    err.path = orig;
+    err.parent = parent;
+    err.require = true;
+    throw err;
   }
+
+  var module = require.modules[resolved];
 
   // perform real require()
   // by invoking the module's
   // registered function
-  if (!mod.exports) {
-    mod.exports = {};
-    mod.client = mod.component = true;
-    mod.call(this, mod, mod.exports, require.relative(path));
+  if (!module.exports) {
+    module.exports = {};
+    module.client = module.component = true;
+    module.call(this, module.exports, require.relative(resolved), module);
   }
 
-  return mod.exports;
+  return module.exports;
 }
 
 /**
@@ -56,19 +69,25 @@ require.aliases = {};
  * @api private
  */
 
-require.resolve = function(path){
-  var orig = path
-    , reg = path + '.js'
-    , regJSON = path + '.json'
-    , index = path + '/index.js'
-    , indexJSON = path + '/index.json';
+require.resolve = function(path) {
+  var index = path + '/index.js';
 
-  return require.modules[reg] && reg
-    || require.modules[regJSON] && regJSON
-    || require.modules[index] && index
-    || require.modules[indexJSON] && indexJSON
-    || require.modules[orig] && orig
-    || require.aliases[index];
+  var paths = [
+    path,
+    path + '.js',
+    path + '.json',
+    path + '/index.js',
+    path + '/index.json'
+  ];
+
+  for (var i = 0; i < paths.length; i++) {
+    var path = paths[i];
+    if (has.call(require.modules, path)) return path;
+  }
+
+  if (has.call(require.aliases, index)) {
+    return require.aliases[index];
+  }
 };
 
 /**
@@ -100,15 +119,15 @@ require.normalize = function(curr, path) {
 };
 
 /**
- * Register module at `path` with callback `fn`.
+ * Register module at `path` with callback `definition`.
  *
  * @param {String} path
- * @param {Function} fn
+ * @param {Function} definition
  * @api private
  */
 
-require.register = function(path, fn){
-  require.modules[path] = fn;
+require.register = function(path, definition) {
+  require.modules[path] = definition;
 };
 
 /**
@@ -119,9 +138,10 @@ require.register = function(path, fn){
  * @api private
  */
 
-require.alias = function(from, to){
-  var fn = require.modules[from];
-  if (!fn) throw new Error('failed to alias "' + from + '", it does not exist');
+require.alias = function(from, to) {
+  if (!has.call(require.modules, from)) {
+    throw new Error('Failed to alias "' + from + '", it does not exist');
+  }
   require.aliases[to] = from;
 };
 
@@ -140,7 +160,7 @@ require.relative = function(parent) {
    * lastIndexOf helper.
    */
 
-  function lastIndexOf(arr, obj){
+  function lastIndexOf(arr, obj) {
     var i = arr.length;
     while (i--) {
       if (arr[i] === obj) return i;
@@ -152,17 +172,16 @@ require.relative = function(parent) {
    * The relative require() itself.
    */
 
-  function fn(path){
-    var orig = path;
-    path = fn.resolve(path);
-    return require(path, parent, orig);
+  function localRequire(path) {
+    var resolved = localRequire.resolve(path);
+    return require(resolved, parent, path);
   }
 
   /**
    * Resolve relative to the parent.
    */
 
-  fn.resolve = function(path){
+  localRequire.resolve = function(path) {
     // resolve deps by returning
     // the dep in the nearest "deps"
     // directory
@@ -180,12 +199,13 @@ require.relative = function(parent) {
    * Check if module is defined at `path`.
    */
 
-  fn.exists = function(path){
-    return !! require.modules[fn.resolve(path)];
+  localRequire.exists = function(path) {
+    return has.call(require.modules, localRequire.resolve(path));
   };
 
-  return fn;
-};require.register("component-emitter/index.js", function(module, exports, require){
+  return localRequire;
+};
+require.register("component-emitter/index.js", function(exports, require, module){
 
 /**
  * Expose `Emitter`.
@@ -195,7 +215,7 @@ module.exports = Emitter;
 
 /**
  * Initialize a new `Emitter`.
- * 
+ *
  * @api public
  */
 
@@ -268,7 +288,9 @@ Emitter.prototype.once = function(event, fn){
  * @api public
  */
 
-Emitter.prototype.off = function(event, fn){
+Emitter.prototype.off =
+Emitter.prototype.removeListener =
+Emitter.prototype.removeAllListeners = function(event, fn){
   this._callbacks = this._callbacks || {};
   var callbacks = this._callbacks[event];
   if (!callbacks) return this;
@@ -290,7 +312,7 @@ Emitter.prototype.off = function(event, fn){
  *
  * @param {String} event
  * @param {Mixed} ...
- * @return {Emitter} 
+ * @return {Emitter}
  */
 
 Emitter.prototype.emit = function(event){
@@ -333,15 +355,41 @@ Emitter.prototype.hasListeners = function(event){
   return !! this.listeners(event).length;
 };
 
-
 });
-require.register("superagent/lib/client.js", function(module, exports, require){
+require.register("RedVentures-reduce/index.js", function(exports, require, module){
+
+/**
+ * Reduce `arr` with `fn`.
+ *
+ * @param {Array} arr
+ * @param {Function} fn
+ * @param {Mixed} initial
+ *
+ * TODO: combatible error handling?
+ */
+
+module.exports = function(arr, fn, initial){  
+  var idx = 0;
+  var len = arr.length;
+  var curr = arguments.length == 3
+    ? initial
+    : arr[idx++];
+
+  while (idx < len) {
+    curr = fn.call(null, curr, arr[idx], ++idx, arr);
+  }
+  
+  return curr;
+};
+});
+require.register("superagent/lib/client.js", function(exports, require, module){
 
 /**
  * Module dependencies.
  */
 
-var Emitter = require('emitter');
+var Emitter = require('emitter')
+  , reduce = require('reduce');
 
 /**
  * Root reference for iframes.
@@ -453,9 +501,9 @@ request.parseString = parseString;
 
 /**
  * Default MIME type map.
- * 
+ *
  *     superagent.types.xml = 'application/xml';
- * 
+ *
  */
 
 request.types = {
@@ -468,11 +516,11 @@ request.types = {
 
 /**
  * Default serialization map.
- * 
+ *
  *     superagent.serialize['application/xml'] = function(obj){
  *       return 'generated xml here';
  *     };
- * 
+ *
  */
 
  request.serialize = {
@@ -482,11 +530,11 @@ request.types = {
 
  /**
   * Default parsers.
-  * 
+  *
   *     superagent.parse['application/xml'] = function(str){
   *       return { object parsed from str };
   *     };
-  * 
+  *
   */
 
 request.parse = {
@@ -545,7 +593,7 @@ function type(str){
  */
 
 function params(str){
-  return str.split(/ *; */).reduce(function(obj, str){
+  return reduce(str.split(/ *; */), function(obj, str){
     var parts = str.split(/ *= */)
       , key = parts.shift()
       , val = parts.shift();
@@ -606,9 +654,8 @@ function Response(xhr, options) {
   this.xhr = xhr;
   this.text = xhr.responseText;
   this.setStatusProperties(xhr.status);
-  this.header = parseHeader(xhr.getAllResponseHeaders());
+  this.header = this.headers = parseHeader(xhr.getAllResponseHeaders());
   this.setHeaderProperties(this.header);
-  this.body = this.parseBody(this.text);
 }
 
 /**
@@ -684,7 +731,9 @@ Response.prototype.setStatusProperties = function(status){
   this.ok = 2 == type;
   this.clientError = 4 == type;
   this.serverError = 5 == type;
-  this.error = 4 == type || 5 == type;
+  this.error = (4 == type || 5 == type)
+    ? this.toError()
+    : false;
 
   // sugar
   this.accepted = 202 == status;
@@ -694,6 +743,20 @@ Response.prototype.setStatusProperties = function(status){
   this.notAcceptable = 406 == status;
   this.notFound = 404 == status;
   this.forbidden = 403 == status;
+};
+
+/**
+ * Return an `Error` representative of this response.
+ *
+ * @return {Error}
+ * @api public
+ */
+
+Response.prototype.toError = function(){
+  var msg = 'got ' + this.status + ' response';
+  var err = new Error(msg);
+  err.status = this.status;
+  return err;
 };
 
 /**
@@ -713,12 +776,16 @@ request.Response = Response;
 function Request(method, url) {
   var self = this;
   Emitter.call(this);
+  this._query = this._query || [];
   this.method = method;
   this.url = url;
   this.header = {};
+  this.stacks = {req: [], res: []};
   this.set('X-Requested-With', 'XMLHttpRequest');
   this.on('end', function(){
-    self.callback(new Response(self.xhr));
+    var res = self.res;
+    if ('HEAD' == method) res.text = null;
+    self.callback(null, res);
   });
 }
 
@@ -730,7 +797,33 @@ Request.prototype = new Emitter;
 Request.prototype.constructor = Request;
 
 /**
- * Abort the request.
+ * Set timeout to `ms`.
+ *
+ * @param {Number} ms
+ * @return {Request} for chaining
+ * @api public
+ */
+
+Request.prototype.timeout = function(ms){
+  this._timeout = ms;
+  return this;
+};
+
+/**
+ * Clear previous timeout.
+ *
+ * @return {Request} for chaining
+ * @api public
+ */
+
+Request.prototype.clearTimeout = function(){
+  this._timeout = 0;
+  clearTimeout(this._timer);
+  return this;
+};
+
+/**
+ * Abort the request, and clear potential timeout.
  *
  * @return {Request}
  * @api public
@@ -738,9 +831,10 @@ Request.prototype.constructor = Request;
 
 Request.prototype.abort = function(){
   if (this.aborted) return;
-  this.xhr.abort();
-  this.emit('abort');
   this.aborted = true;
+  this.xhr.abort();
+  this.clearTimeout();
+  this.emit('abort');
   return this;
 };
 
@@ -786,7 +880,7 @@ Request.prototype.set = function(field, val){
  *        .type('xml')
  *        .send(xmlstring)
  *        .end(callback);
- *      
+ *
  *      request.post('/')
  *        .type('application/xml')
  *        .send(xmlstring)
@@ -803,19 +897,22 @@ Request.prototype.type = function(type){
 };
 
 /**
- * Add `obj` to the query-string, later formatted
- * in `.end()`.
- *
- * @param {Object} obj
- * @return {Request} for chaining
- * @api public
- */
+* Add query-string `val`.
+*
+* Examples:
+*
+*   request.get('/shoes')
+*     .query('size=10')
+*     .query({ color: 'blue' })
+*
+* @param {Object|String} val
+* @return {Request} for chaining
+* @api public
+*/
 
-Request.prototype.query = function(obj){
-  this._query = this._query || {};
-  for (var key in obj) {
-    this._query[key] = obj[key];
-  }
+Request.prototype.query = function(val){
+  if ('string' != typeof val) val = serialize(val);
+  this._query.push(val);
   return this;
 };
 
@@ -841,18 +938,18 @@ Request.prototype.query = function(obj){
  *         .type('json')
  *         .send('{"name":"tj"})
  *         .end(callback)
- *       
+ *
  *       // auto json
  *       request.post('/user')
  *         .send({ name: 'tj' })
  *         .end(callback)
- *       
+ *
  *       // manual x-www-form-urlencoded
  *       request.post('/user')
  *         .type('form')
  *         .send('name=tj')
  *         .end(callback)
- *       
+ *
  *       // auto x-www-form-urlencoded
  *       request.post('/user')
  *         .type('form')
@@ -899,6 +996,137 @@ Request.prototype.send = function(data){
 };
 
 /**
+ * Use middleware for manipulating req/res.
+ *
+ * @param {Function} fn
+ * @return {Boolean}
+ * @api public
+ */
+Request.prototype.use = function(fn) {
+  this.stacks.req.push({handle: fn});
+  return this;
+};
+
+/**
+ * Invoke the callback with `err` and `res`
+ * and handle arity check.
+ *
+ * @param {Error} err
+ * @param {Response} res
+ * @api private
+ */
+
+Request.prototype.callback = function(err, res){
+  var fn = this._callback;
+  if (2 == fn.length) return fn(err, res);
+  if (err) return this.emit('error', err);
+  fn(res);
+};
+
+/**
+ * Invoke callback with x-domain error.
+ *
+ * @api private
+ */
+
+Request.prototype.crossDomainError = function(){
+  var err = new Error('Origin is not allowed by Access-Control-Allow-Origin');
+  err.crossDomain = true;
+  this.callback(err);
+};
+
+/**
+ * Invoke callback with timeout error.
+ *
+ * @api private
+ */
+
+Request.prototype.timeoutError = function(){
+  var timeout = this._timeout;
+  var err = new Error('timeout of ' + timeout + 'ms exceeded');
+  err.timeout = timeout;
+  this.callback(err);
+};
+
+/**
+ * Enable transmission of cookies with x-domain requests.
+ *
+ * Note that for this to work the origin must not be
+ * using "Access-Control-Allow-Origin" with a wildcard,
+ * and also must set "Access-Control-Allow-Credentials"
+ * to "true".
+ *
+ * @api public
+ */
+
+Request.prototype.withCredentials = function(){
+  this._withCredentials = true;
+  return this;
+};
+
+/**
+ * Handle requests, punting them down
+ * the middleware stack.
+ *
+ * @param {Request} req
+ * @param {Function} out
+ * @param {Boolean} resp
+ * @api private
+ */
+
+Request.prototype.handle = function(req, out, resp) {
+  var stack
+    , self = this
+    , index = 0
+    , resp = !!resp;
+
+  if(resp) {
+    stack = self.stacks.res;
+    index = stack.length-1;
+  }
+  else {
+    self.stacks.res = [];
+    stack = self.stacks.req;
+  }
+
+  function next(err, prev) {
+
+    // Add the res callback to the stack
+    if(prev && !resp) self.stacks.res.push({handle: prev});
+
+    var layer, status, c;
+
+    // next callback
+    layer = resp ? stack[index--] : stack[index++];
+
+    // all done
+    if (!layer) {
+      // delegate to parent
+      if (out) return out(err);
+      return;
+    }
+
+    try {
+      var arity = layer.handle.length;
+      if (err) {
+        if (arity === 3) {
+          layer.handle(err, req, next);
+        } else {
+          next(err);
+        }
+      } else if (arity < 3) {
+        layer.handle(req, next);
+      } else {
+        next();
+      }
+    } catch (e) {
+      next(e);
+    }
+  }
+  next();
+};
+
+/**
  * Initiate request, invoking callback `fn(res)`
  * with an instanceof `Response`.
  *
@@ -910,42 +1138,75 @@ Request.prototype.send = function(data){
 Request.prototype.end = function(fn){
   var self = this;
   var xhr = this.xhr = getXHR();
-  var query = this._query;
-  var data = this._data;
 
   // store callback
-  this.callback = fn || noop;
+  this._callback = fn || noop;
 
-  // state change
-  xhr.onreadystatechange = function(){
-    if (4 == xhr.readyState) self.emit('end');
-  };
+  // CORS
+  if (this._withCredentials) xhr.withCredentials = true;
 
-  // querystring
-  if (query) {
-    query = request.serializeObject(query);
-    this.url += ~this.url.indexOf('?')
-      ? '&' + query
-      : '?' + query;
-  }
+  this.handle(self, function(err) {
+    if(err) return fn(err);
 
-  // initiate request
-  xhr.open(this.method, this.url, true);
+    var query = self._query.join('&');
+    var timeout = self._timeout;
+    var data = self._data;
 
-  // body
-  if ('GET' != this.method && 'HEAD' != this.method && 'string' != typeof data) {
-    // serialize stuff
-    var serialize = request.serialize[this.header['content-type']];
-    if (serialize) data = serialize(data);
-  }
+    // state change
+    xhr.onreadystatechange = function(){
+      if (4 != xhr.readyState) return;
+      if (0 == xhr.status) {
+        if (self.aborted) return self.timeoutError();
+        return self.crossDomainError();
+      }
+      var res = self.res = new Response(xhr);
+      self.handle(res, function(err) {
+        if(err) {
+          self.emit('error', err);
+          self.emit('end');
+          return fn(err);
+        }
+        // Re-apply the headers
+        res.setHeaderProperties(res.header);
+        res.body = res.parseBody(res.text);
+        self.emit('end');
+      }, true);
+    };
 
-  // set header fields
-  for (var field in this.header) {
-    xhr.setRequestHeader(field, this.header[field]);
-  }
+    // timeout
+    if (timeout && !self._timer) {
+      self._timer = setTimeout(function(){
+        self.abort();
+      }, timeout);
+    }
 
-  // send stuff
-  xhr.send(data);
+    // querystring
+    if (query) {
+      query = request.serializeObject(query);
+      self.url += ~self.url.indexOf('?')
+        ? '&' + query
+        : '?' + query;
+    }
+
+    // initiate request
+    xhr.open(self.method, self.url, true);
+
+    // body
+    if ('GET' != self.method && 'HEAD' != self.method && 'string' != typeof data) {
+      // serialize stuff
+      var serialize = request.serialize[self.header['content-type']];
+      if (serialize) data = serialize(data);
+    }
+
+    // set header fields
+    for (var field in self.header) {
+      xhr.setRequestHeader(field, self.header[field]);
+    }
+
+    // send stuff
+    xhr.send(data);
+
+  });
   return this;
 };
 
@@ -988,7 +1249,7 @@ function request(method, url) {
  * GET `url` with optional callback `fn(res)`.
  *
  * @param {String} url
- * @param {Mixed} data
+ * @param {Mixed|Function} data or fn
  * @param {Function} fn
  * @return {Request}
  * @api public
@@ -1006,7 +1267,7 @@ request.get = function(url, data, fn){
  * GET `url` with optional callback `fn(res)`.
  *
  * @param {String} url
- * @param {Mixed} data
+ * @param {Mixed|Function} data or fn
  * @param {Function} fn
  * @return {Request}
  * @api public
@@ -1047,6 +1308,7 @@ request.del = function(url, fn){
 
 request.patch = function(url, data, fn){
   var req = request('PATCH', url);
+  if ('function' == typeof data) fn = data, data = null;
   if (data) req.send(data);
   if (fn) req.end(fn);
   return req;
@@ -1064,6 +1326,7 @@ request.patch = function(url, data, fn){
 
 request.post = function(url, data, fn){
   var req = request('POST', url);
+  if ('function' == typeof data) fn = data, data = null;
   if (data) req.send(data);
   if (fn) req.end(fn);
   return req;
@@ -1073,7 +1336,7 @@ request.post = function(url, data, fn){
  * PUT `url` with optional `data` and callback `fn(res)`.
  *
  * @param {String} url
- * @param {Mixed} data
+ * @param {Mixed|Function} data or fn
  * @param {Function} fn
  * @return {Request}
  * @api public
@@ -1081,6 +1344,7 @@ request.post = function(url, data, fn){
 
 request.put = function(url, data, fn){
   var req = request('PUT', url);
+  if ('function' == typeof data) fn = data, data = null;
   if (data) req.send(data);
   if (fn) req.end(fn);
   return req;
@@ -1091,9 +1355,18 @@ request.put = function(url, data, fn){
  */
 
 module.exports = request;
+
 });
 require.alias("component-emitter/index.js", "superagent/deps/emitter/index.js");
 
+require.alias("RedVentures-reduce/index.js", "superagent/deps/reduce/index.js");
+
 require.alias("superagent/lib/client.js", "superagent/index.js");
-window.superagent = require("superagent");
-})();
+
+if (typeof exports == "object") {
+  module.exports = require("superagent");
+} else if (typeof define == "function" && define.amd) {
+  define(require("superagent"));
+} else {
+  window["superagent"] = require("superagent");
+}})();

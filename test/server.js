@@ -17,6 +17,11 @@ app.use(function(req, res, next){
 
 app.use(express.bodyParser());
 
+app.use(function(req, res, next){
+  res.cookie('name', 'tobi');
+  next();
+});
+
 app.get('/', function(req, res){
   res.redirect('/test/');
 });
@@ -39,6 +44,13 @@ app.get('/not-acceptable', function(req, res){
 
 app.get('/no-content', function(req, res){
   res.send(204);
+});
+
+app.get('/delay/:ms', function(req, res){
+  var ms = ~~req.params.ms;
+  setTimeout(function(){
+    res.send(200);
+  }, ms);
 });
 
 app.put('/user/:id', function(req, res){
@@ -93,5 +105,26 @@ app.get('/foo', function(req, res){
 
 app.use(express.static(__dirname + '/../'));
 
-app.listen(3000);
-console.log('Test server listening on port 3000');
+app.listen(4000);
+console.log('Test server listening on port 4000');
+
+var two = express();
+
+two.use(express.cookieParser());
+
+two.all('*', function(req, res, next){
+  if (!req.get('Origin')) return next();
+  res.set('Access-Control-Allow-Origin', 'http://localhost:4000');
+  res.set('Access-Control-Allow-Credentials', 'true');
+  res.set('Access-Control-Allow-Methods', 'POST');
+  res.set('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type');
+  if ('OPTIONS' == req.method) return res.send(200);
+  next();
+});
+
+two.get('/', function(req, res){
+  res.send(req.cookies.name);
+});
+
+two.listen(4001);
+console.log('Test server #2 listening on port 4001');

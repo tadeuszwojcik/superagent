@@ -1,7 +1,7 @@
 
-var request = require('../../')
+var request = require('../..')
   , express = require('express')
-  , assert = require('assert')
+  , assert = require('better-assert')
   , app = express();
 
 app.get('/', function(req, res){
@@ -14,6 +14,60 @@ app.del('/', function(req, res){
 
 app.listen(3006);
 
+describe('req.query(String)', function(){
+  it('should work when called once', function(done){
+    request
+    .del('http://localhost:3006/')
+    .query('name=tobi')
+    .end(function(res){
+      res.body.should.eql({ name: 'tobi' });
+      done();
+    });
+  })
+
+  it('should work with url query-string', function(done){
+    request
+    .del('http://localhost:3006/?name=tobi')
+    .query('age=2')
+    .end(function(res){
+      res.body.should.eql({ name: 'tobi', age: '2' });
+      done();
+    });
+  })
+
+  it('should work when called multiple times', function(done){
+    request
+    .del('http://localhost:3006/')
+    .query('name=tobi')
+    .query('age=2')
+    .end(function(res){
+      res.body.should.eql({ name: 'tobi', age: '2' });
+      done();
+    });
+  })
+
+  it('should work when mixed with objects', function(done){
+    request
+    .del('http://localhost:3006/')
+    .query('name=tobi')
+    .query({ age: 2 })
+    .end(function(res){
+      res.body.should.eql({ name: 'tobi', age: '2' });
+      done();
+    });
+  })
+
+  // it('should leave strange formatting as-is', function(done){
+  //   request
+  //   .del('http://localhost:3006/')
+  //   .query('a=1&a=2&a=3')
+  //   .end(function(res){
+  //     res.body.should.eql({ a: '3' });
+  //     done();
+  //   });
+  // })
+})
+
 describe('req.query(Object)', function(){
   it('should construct the query-string', function(done){
     request
@@ -23,6 +77,18 @@ describe('req.query(Object)', function(){
     .query({ limit: ['1', '2'] })
     .end(function(res){
       res.body.should.eql({ name: 'tobi', order: 'asc', limit: ['1', '2'] });
+      done();
+    });
+  })
+
+  it('should not error on dates', function(done){
+    var date = new Date(0);
+
+    request
+    .del('http://localhost:3006/')
+    .query({ at: date })
+    .end(function(res){
+      assert(String(date) == res.body.at);
       done();
     });
   })
